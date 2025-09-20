@@ -6,8 +6,7 @@ import psutil  # pip install psutil
 
 # ---------------- Detect screen recording apps ----------------
 recording_apps = [
-    "obs64.exe", "obs32.exe", "streamlabs obs.exe", "xsplit.exe",
-    "discord.exe", "zoom.exe", "teams.exe"
+    "obs64.exe", "obs32.exe", "streamlabs obs.exe", "xsplit.exe", "zoom.exe", "teams.exe"
 ]
 
 def is_recording_app_running():
