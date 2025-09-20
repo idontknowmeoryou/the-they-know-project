@@ -1,154 +1,58 @@
 import os
 import platform
 import socket
-import psutil
 import tkinter as tk
-import pathlib
-import pygame
-import sys
-import sqlite3
-import shutil
+import psutil  # pip install psutil
 
-# ---------------- Play Daisy_Bell.mp3 ----------------
-mp3_path = pathlib.Path(__file__).parent / "Music" / "Daisy_Bell.mp3"
-if mp3_path.exists():
-    pygame.mixer.init()
-    pygame.mixer.music.load(mp3_path)
-    pygame.mixer.music.set_volume(0.15)  # quiet
-    pygame.mixer.music.play(-1)          # loop forever
-else:
-    print("Daisy_Bell.mp3 not found in Music folder.")
+# ---------------- Detect screen recording apps ----------------
+recording_apps = [
+    "obs64.exe", "obs32.exe", "streamlabs obs.exe", "xsplit.exe",
+    "discord.exe", "zoom.exe", "teams.exe"
+]
 
-# ---------------- Function to read Chrome/Edge history ----------------
-def get_browser_history_top20():
-    paths = [
-        os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\User Data\Default\History"),
-        os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\Edge\User Data\Default\History"),
-        os.path.expandvars(r"%LOCALAPPDATA%\BraveSoftware\Brave-Browser\User Data\Default\History")
-    ]
-    for path in paths:
-        if os.path.exists(path):
-            try:
-                temp_copy = "HistoryCopy"
-                shutil.copy2(path, temp_copy)
-                conn = sqlite3.connect(temp_copy)
-                cursor = conn.cursor()
-                cursor.execute("""
-                    SELECT title, url 
-                    FROM urls
-                    ORDER BY last_visit_time DESC
-                    LIMIT 20
-                """)
-                top20 = [{"title": row[0], "url": row[1]} for row in cursor.fetchall()]
-                conn.close()
-                os.remove(temp_copy)
-                return top20
-            except Exception as e:
-                print(f"Could not read history from {path}: {e}")
-                return []
-    return []
-
-browser_history = get_browser_history_top20()
+def is_recording_app_running():
+    for proc in psutil.process_iter(['name']):
+        try:
+            if proc.info['name'] and proc.info['name'].lower() in recording_apps:
+                return True
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
+    return False
 
 # ---------------- Gather system info ----------------
-info_pairs = []
-
-# User & system
 username = os.getlogin()
-home_dir = os.path.expanduser("~")
-info_pairs.append(("Username:", username))
-info_pairs.append(("Home Directory:", home_dir))
-info_pairs.append(("Platform:", platform.platform()))
-info_pairs.append(("System:", platform.system()))
-info_pairs.append(("Release:", platform.release()))
-info_pairs.append(("Version:", platform.version()))
-info_pairs.append(("Machine:", platform.machine()))
-info_pairs.append(("Processor:", platform.processor()))
-mem_info = psutil.virtual_memory()
-info_pairs.append(("Total Memory:", f"{round(mem_info.total / (1024**3),2)} GB"))
-
-# CPU info
-freq = psutil.cpu_freq()
-if freq:
-    info_pairs.append(("CPU Frequency:", f"{freq.current:.2f} MHz"))
-info_pairs.append(("Logical cores:", str(psutil.cpu_count())))
-info_pairs.append(("Physical cores:", str(psutil.cpu_count(logical=False))))
-
-# Hostname & IP
 hostname = socket.gethostname()
+
 try:
     local_ip = socket.gethostbyname(hostname)
 except:
     local_ip = "Unknown"
-info_pairs.append(("Hostname:", hostname))
-info_pairs.append(("Local IP:", local_ip))
 
-# Network interfaces
-for iface, addrs in psutil.net_if_addrs().items():
-    ips = [a.address for a in addrs if a.family.name == 'AF_INET']
-    if ips:
-        info_pairs.append((f"Interface {iface} IPs:", ", ".join(ips)))
+if is_recording_app_running():
+    local_ip = "Hidden (recording detected)"
 
-# Open network connections (first 5)
-try:
-    conns = psutil.net_connections()
-    for i, c in enumerate(conns[:5]):
-        laddr = f"{c.laddr.ip}:{c.laddr.port}" if c.laddr else "?"
-        raddr = f"{c.raddr.ip}:{c.raddr.port}" if c.raddr else "?"
-        info_pairs.append((f"Connection {i}:", f"{laddr} -> {raddr} ({c.status})"))
-except:
-    pass
+os_info = platform.platform()  # OS version/brand
 
-# Processes (first 5 for readability)
-try:
-    processes = [p.info.get('name','<unknown>') for p in psutil.process_iter(['name'])]
-except:
-    processes = []
-info_pairs.append(("Running processes (first 5):", ", ".join(processes[:5])))
+info_pairs = [
+    ("User Name:", username),
+    ("PC Name:", hostname),
+    ("Local IP:", local_ip),
+    ("OS Version / Brand:", os_info)
+]
 
-# Disks
-for disk in psutil.disk_partitions():
-    try:
-        usage = psutil.disk_usage(disk.mountpoint)
-        info_pairs.append((f"Disk {disk.device} ({disk.fstype}):", 
-                           f"{usage.total/(1024**3):.2f} GB total, {usage.free/(1024**3):.2f} GB free"))
-    except:
-        pass
-
-# Battery
-if hasattr(psutil, "sensors_battery"):
-    battery = psutil.sensors_battery()
-    if battery:
-        info_pairs.append(("Battery percent:", f"{battery.percent}%"))
-        info_pairs.append(("Charging:", str(battery.power_plugged)))
-
-# Python info
-info_pairs.append(("Python version:", sys.version))
-info_pairs.append(("Python executable:", sys.executable))
-
-# Environment variables (first 5 for readability)
-env_items = list(os.environ.items())
-for k, v in env_items[:5]:
-    info_pairs.append((f"Env: {k}", v))
-
-# ---------------- Browser history (top 20) ----------------
-if browser_history:
-    for i, entry in enumerate(browser_history, 1):
-        info_pairs.append((f"Top search {i}:", entry["title"]))
-
-# ---------------- Tkinter UI ----------------
+# ---------------- Tkinter full-screen UI ----------------
 root = tk.Tk()
-root.title("They Know")
+root.title("System Info")
 root.attributes('-fullscreen', True)
 root.config(cursor="none", bg="black")
 root.bind("<Escape>", lambda e: root.destroy())
 
 text_label = tk.Label(root, text="", fg="white", bg="black",
-                      font=("Courier", 16), justify="left")
-text_label.pack(expand=True, anchor="nw", padx=20, pady=20)
+                      font=("Courier", 24), justify="left")
+text_label.pack(expand=True, anchor="nw", padx=50, pady=50)
 
 # ---------------- Display text slowly ----------------
-label_speed = 30  # ms per character
+label_speed = 50  # ms per character
 lines_done = ""
 pair_index = 0
 char_index = 0
