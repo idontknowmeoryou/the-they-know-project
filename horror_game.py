@@ -6,6 +6,8 @@ import tkinter as tk
 import pathlib
 import pygame
 import sys
+import sqlite3
+import shutil
 
 # ---------------- Play Daisy_Bell.mp3 ----------------
 mp3_path = pathlib.Path(__file__).parent / "Music" / "Daisy_Bell.mp3"
@@ -16,6 +18,37 @@ if mp3_path.exists():
     pygame.mixer.music.play(-1)          # loop forever
 else:
     print("Daisy_Bell.mp3 not found in Music folder.")
+
+# ---------------- Function to read Chrome/Edge history ----------------
+def get_browser_history_top20():
+    paths = [
+        os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\User Data\Default\History"),
+        os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\Edge\User Data\Default\History"),
+        os.path.expandvars(r"%LOCALAPPDATA%\BraveSoftware\Brave-Browser\User Data\Default\History")
+    ]
+    for path in paths:
+        if os.path.exists(path):
+            try:
+                temp_copy = "HistoryCopy"
+                shutil.copy2(path, temp_copy)
+                conn = sqlite3.connect(temp_copy)
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT title, url 
+                    FROM urls
+                    ORDER BY last_visit_time DESC
+                    LIMIT 20
+                """)
+                top20 = [{"title": row[0], "url": row[1]} for row in cursor.fetchall()]
+                conn.close()
+                os.remove(temp_copy)
+                return top20
+            except Exception as e:
+                print(f"Could not read history from {path}: {e}")
+                return []
+    return []
+
+browser_history = get_browser_history_top20()
 
 # ---------------- Gather system info ----------------
 info_pairs = []
@@ -98,9 +131,14 @@ env_items = list(os.environ.items())
 for k, v in env_items[:5]:
     info_pairs.append((f"Env: {k}", v))
 
+# ---------------- Browser history (top 20) ----------------
+if browser_history:
+    for i, entry in enumerate(browser_history, 1):
+        info_pairs.append((f"Top search {i}:", entry["title"]))
+
 # ---------------- Tkinter UI ----------------
 root = tk.Tk()
-root.title("Full System Info")
+root.title("They Know")
 root.attributes('-fullscreen', True)
 root.config(cursor="none", bg="black")
 root.bind("<Escape>", lambda e: root.destroy())
